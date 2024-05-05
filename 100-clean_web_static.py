@@ -1,16 +1,17 @@
 #!/usr/bin/python3
-""" Deploy archive!
+""" module doc
 """
-from fabric.api import task, local, env, put, run
+from fabric.api import task, local, env, put, run, runs_once
 from datetime import datetime
 import os
 
 env.hosts = ['54.162.34.11', '100.25.140.43']
 
 
-@task
+@runs_once
 def do_pack():
-    """ do_pack method
+    """ method doc
+        sudo fab -f 1-pack_web_static.py do_pack
     """
     formatted_dt = datetime.now().strftime('%Y%m%d%H%M%S')
     mkdir = "mkdir -p versions"
@@ -23,7 +24,10 @@ def do_pack():
 
 @task
 def do_deploy(archive_path):
-    """ do_deploy method
+    """ method doc
+        fab -f 2-do_deploy_web_static.py do_deploy:
+        archive_path=versions/web_static_20231004201306.tgz
+        -i ~/.ssh/id_rsa -u ubuntu
     """
     try:
         if not os.path.exists(archive_path):
@@ -42,14 +46,37 @@ def do_deploy(archive_path):
         run("ln -s {}{}/ /data/web_static/current".format(dpath, fn_no_ext))
         print("New version deployed!")
         return True
-    except:
+    except Exception:
         return False
 
 
+@task
 def deploy():
-    """creates and distributes an archive to web servers
+    """ method doc
+        sudo fab -f 1-pack_web_static.py do_pack
     """
-    archive_path = do_pack()
-    if archive_path is None:
+    path = do_pack()
+    if path is None:
         return False
-    return do_deploy(archive_path)
+    return do_deploy(path)
+
+
+@runs_once
+def remove_local(number):
+    """ method doc
+        sudo fab -f 1-pack_web_static.py do_pack
+    """
+    local("ls -dt versions/* | tail -n +{} | sudo xargs rm -fr".format(number))
+
+
+@task
+def do_clean(number=0):
+    """ method doc
+        sudo fab -f 1-pack_web_static.py do_pack
+    """
+    if int(number) == 0:
+        number = 1
+    number = int(number) + 1
+    remove_local(number)
+    rem_path = "/data/web_static/releases/*"
+    run("ls -dt {} | tail -n +{} | sudo xargs rm -fr".format(rem_path, number))

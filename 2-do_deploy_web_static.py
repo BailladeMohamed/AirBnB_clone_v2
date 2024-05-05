@@ -1,105 +1,46 @@
 #!/usr/bin/python3
-
+""" Deploy archive!
 """
-Fabric script that distributes an archive to my webserver
-based on the first task
-"""
-
-from fabric.api import env, put, run
-from os.path import exists
+from fabric.api import task, local, env, put, run
 from datetime import datetime
+import os
 
-env.hosts = ['52.91.152.110', '52.87.152.252']
-env.user = 'ubuntu'
+env.hosts = ['54.162.34.11', '100.25.140.43']
 
 
+@task
 def do_pack():
+    """ do_pack method
     """
-    Generates a .tgz archive from the web_static folder content
-
-    Returns:
-        str: Archive path or None otherwise.
-    """
-    local("mkdir -p versions")
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    ap = f"versions/web_static_{timestamp}.tgz"
-    ac = f"tar -cvzf {ap} web_static"
-    result = local(ac)
-
-    if result.failed:
-        return None
-    else:
-        output = f"web_static packed: {ap} -> "
-        output += f"{result.stdout.split()[-1]}Bytes"
-        print(output)
-        return ap
+    formatted_dt = datetime.now().strftime('%Y%m%d%H%M%S')
+    mkdir = "mkdir -p versions"
+    path = "versions/web_static_{}.tgz".format(formatted_dt)
+    print("Packing web_static to {}".format(path))
+    if local("{} && tar -cvzf {} web_static".format(mkdir, path)).succeeded:
+        return path
+    return None
 
 
+@task
 def do_deploy(archive_path):
+    """ do_deploy method
     """
-    Distributes an archive to my WS (web server)
-
-    Args:
-        archive_path (str): Path to the archive
-
-    Returns:
-        bool: True if all good or otherwise False
-    """
-    if not exists(archive_path):
-        return False
-
     try:
-        file = archive_path.split("/")[-1]
-        name = file.split(".")[0]
-
-        # Uploading archive to /tmp/
-        if put(archive_path, "/tmp/{}".format(file)).failed:
+        if not os.path.exists(archive_path):
             return False
-
-        # Removing existing release directory
-        if run("rm -rf /data/web_static/releases/{}/".format(name)).failed:
-            return False
-
-        # Creating new release directory
-        if run("mkdir -p /data/web_static/releases/{}/".format(name)).failed:
-            return False
-
-        # Extracting archive to new release directory
-        if run("tar -xzf /tmp/{} -C /data/web_static/releases/{}/"
-               .format(file, name)).failed:
-            return False
-
-        # Cleaning up /tmp/
-        if run("rm /tmp/{}".format(file)).failed:
-            return False
-
-        # Moving contents to release directory
-        if run("mv /data/web_static/releases/{}/web_static/* "
-               "/data/web_static/releases/{}/".format(name, name)).failed:
-            return False
-
-        # Cleaning up old web_static directory
-        if run("rm -rf /data/web_static/releases/{}/web_static"
-               .format(name)).failed:
-            return False
-
-        # Updating the symbolic link
-        if run("rm -rf /data/web_static/current").failed:
-            return False
-
-        if run("ln -s /data/web_static/releases/{}/ /data/web_static/current"
-               .format('test')).failed:
-            return False
-
+        fn_with_ext = os.path.basename(archive_path)
+        fn_no_ext, ext = os.path.splitext(fn_with_ext)
+        dpath = "/data/web_static/releases/"
+        put(archive_path, "/tmp/")
+        run("rm -rf {}{}/".format(dpath, fn_no_ext))
+        run("mkdir -p {}{}/".format(dpath, fn_no_ext))
+        run("tar -xzf /tmp/{} -C {}{}/".format(fn_with_ext, dpath, fn_no_ext))
+        run("rm /tmp/{}".format(fn_with_ext))
+        run("mv {0}{1}/web_static/* {0}{1}/".format(dpath, fn_no_ext))
+        run("rm -rf {}{}/web_static".format(dpath, fn_no_ext))
+        run("rm -rf /data/web_static/current")
+        run("ln -s {}{}/ /data/web_static/current".format(dpath, fn_no_ext))
         print("New version deployed!")
         return True
-
-    except Exception as e:
-        print(e)
+    except Exception:
         return False
-
-
-if __name__ == "__main__":
-    archive_path = do_pack()
-    if archive_path:
-        do_deploy(archive_path)
